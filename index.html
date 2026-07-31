@@ -65,7 +65,12 @@
   const db = firebase.firestore();
 
   const params = new URLSearchParams(window.location.search);
-  const code = params.get("code");
+  let code = params.get("code");
+  if(code){
+    try{ sessionStorage.setItem("mytc_pair_code", code); }catch(e){}
+  } else {
+    try{ code = sessionStorage.getItem("mytc_pair_code"); }catch(e){}
+  }
 
   const btn = document.getElementById("googleBtn");
   const spinner = document.getElementById("spinner");
@@ -78,40 +83,61 @@
     btn.style.display = "none";
   }
 
-  btn.addEventListener("click", () => {
-    btn.disabled = true;
-    spinner.style.display = "block";
-    stateText.className = "state";
-    stateText.textContent = "Abriendo ventana de Google...";
+  function finishSignIn(result){
+    const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+    const idToken = credential.idToken;
+    const user = result.user;
 
-    const provider = new firebase.auth.GoogleAuthProvider();
-    auth.signInWithPopup(provider).then((result) => {
-      const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-      const idToken = credential.idToken;
-      const user = result.user;
-
-      return db.collection("pairings").doc(code).set({
-        uid: user.uid,
-        email: user.email || "",
-        displayName: user.displayName || "",
-        idToken: idToken,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp()
-      });
+    return db.collection("pairings").doc(code).set({
+      uid: user.uid,
+      email: user.email || "",
+      displayName: user.displayName || "",
+      idToken: idToken,
+      createdAt: firebase.firestore.FieldValue.serverTimestamp()
     }).then(() => {
       spinner.style.display = "none";
       stateText.className = "state ok";
       stateText.textContent = "¡Listo! Ya puedes volver a la app.";
       btn.style.display = "none";
+      try{ sessionStorage.removeItem("mytc_pair_code"); }catch(e){}
       setTimeout(()=>{ try{ window.close(); }catch(e){} }, 1200);
-    }).catch((err) => {
-      spinner.style.display = "none";
-      btn.disabled = false;
-      stateText.className = "state err";
-      if(err && err.code === "auth/popup-closed-by-user"){
-        stateText.textContent = "Cerraste la ventana antes de terminar. Intenta de nuevo.";
-      } else {
-        stateText.textContent = "Ocurrió un error. Intenta de nuevo. (" + (err && err.code ? err.code : "error") + ")";
-      }
+    });
+  }
+
+  function showError(err){
+    spinner.style.display = "none";
+    btn.disabled = false;
+    stateText.className = "state err";
+    if(err && err.code === "auth/popup-closed-by-user"){
+      stateText.textContent = "Cerraste la ventana antes de terminar. Intenta de nuevo.";
+    } else {
+      stateText.textContent = "Ocurrió un error. Intenta de nuevo. (" + (err && err.code ? err.code : "error") + ")";
+    }
+  }
+
+  // Al volver de Google (flujo de redirección), termina el proceso automáticamente
+  spinner.style.display = "block";
+  stateText.textContent = "Verificando...";
+  auth.getRedirectResult().then((result) => {
+    if(result && result.user && code){
+      return finishSignIn(result);
+    }
+    spinner.style.display = "none";
+    stateText.textContent = "";
+  }).catch((err) => {
+    if(err && err.code){ showError(err); }
+    else { spinner.style.display = "none"; stateText.textContent = ""; }
+  });
+
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    spinner.style.display = "block";
+    stateText.className = "state";
+    stateText.textContent = "Abriendo Google...";
+
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithRedirect(provider).catch((err) => {
+      showError(err);
     });
   });
 </script>
