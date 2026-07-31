@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MyTradingCalendar · Iniciar sesión</title>
+<style>
+  :root{
+    --bg:#0a0a0c; --card:#151519; --border:#2a2a32; --text:#eaeaf0;
+    --muted:#7a7a88; --accent:#5b8def; --green:#22c55e; --red:#f0475a;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .card{max-width:380px;width:100%;background:var(--card);border:1px solid var(--border);
+    border-radius:18px;padding:32px 26px;text-align:center;}
+  h1{font-size:19px;margin:0 0 6px;font-weight:800;}
+  p{font-size:13.5px;color:var(--muted);line-height:1.5;margin:0 0 24px;}
+  .g-btn{width:100%;background:#fff;color:#1f1f1f;border:none;border-radius:10px;
+    padding:13px;font-size:14.5px;font-weight:700;display:flex;align-items:center;
+    justify-content:center;gap:10px;cursor:pointer;}
+  .g-btn:disabled{opacity:.6;}
+  .g-btn svg{width:18px;height:18px;}
+  .state{margin-top:20px;font-size:13px;color:var(--muted);min-height:18px;}
+  .state.ok{color:var(--green);font-weight:700;}
+  .state.err{color:var(--red);}
+  .spinner{width:26px;height:26px;border-radius:50%;border:3px solid var(--border);
+    border-top-color:var(--accent);animation:spin .8s linear infinite;margin:18px auto 0;display:none;}
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+  .badge{display:inline-block;background:#171a24;border:1px solid var(--border);
+    color:var(--muted);font-size:11px;padding:5px 10px;border-radius:20px;margin-bottom:18px;}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="badge">MyTradingCalendar</div>
+  <h1>Iniciar sesión con Google</h1>
+  <p id="introText" style="display:none"></p>
+
+  <button class="g-btn" id="googleBtn">
+    <svg viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34 5.1 29.3 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.4-.1-2.4-.4-3.5z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34 5.1 29.3 3 24 3 16.3 3 9.7 7.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 45c5.2 0 9.9-2 13.4-5.2l-6.2-5.2c-2 1.4-4.6 2.2-7.2 2.2-5.3 0-9.7-3.3-11.3-8l-6.5 5C9.6 40.6 16.3 45 24 45z"/><path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.2 4.3-4.1 5.6l6.2 5.2C40.9 36 44 30.5 44 24c0-1.4-.1-2.4-.4-3.5z"/></svg>
+    Continuar con Google
+  </button>
+
+  <div class="spinner" id="spinner"></div>
+  <div class="state" id="stateText"></div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.2/firebase-firestore-compat.js"></script>
+<script>
+  const firebaseConfig = {
+    apiKey: "AIzaSyAus0-vAu56s3plXGr2zTMBsuY4zvN1HGY",
+    authDomain: "mytradingcalendar-database.firebaseapp.com",
+    projectId: "mytradingcalendar-database",
+    storageBucket: "mytradingcalendar-database.firebasestorage.app",
+    messagingSenderId: "827866738460",
+    appId: "1:827866738460:web:04251590089af1d828d4d9"
+  };
+  firebase.initializeApp(firebaseConfig);
+  const auth = firebase.auth();
+  const db = firebase.firestore();
+
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+
+  const btn = document.getElementById("googleBtn");
+  const spinner = document.getElementById("spinner");
+  const stateText = document.getElementById("stateText");
+  const introText = document.getElementById("introText");
+
+  if(!code){
+    introText.textContent = "Este enlace debe abrirse desde la app MyTradingCalendar.";
+    introText.style.display = "";
+    btn.style.display = "none";
+  }
+
+  btn.addEventListener("click", () => {
+    btn.disabled = true;
+    spinner.style.display = "block";
+    stateText.className = "state";
+    stateText.textContent = "Abriendo ventana de Google...";
+
+    const provider = new firebase.auth.GoogleAuthProvider();
+    auth.signInWithPopup(provider).then((result) => {
+      const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
+      const idToken = credential.idToken;
+      const user = result.user;
+
+      return db.collection("pairings").doc(code).set({
+        uid: user.uid,
+        email: user.email || "",
+        displayName: user.displayName || "",
+        idToken: idToken,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    }).then(() => {
+      spinner.style.display = "none";
+      stateText.className = "state ok";
+      stateText.textContent = "¡Listo! Ya puedes volver a la app.";
+      btn.style.display = "none";
+      setTimeout(()=>{ try{ window.close(); }catch(e){} }, 1200);
+    }).catch((err) => {
+      spinner.style.display = "none";
+      btn.disabled = false;
+      stateText.className = "state err";
+      if(err && err.code === "auth/popup-closed-by-user"){
+        stateText.textContent = "Cerraste la ventana antes de terminar. Intenta de nuevo.";
+      } else {
+        stateText.textContent = "Ocurrió un error. Intenta de nuevo. (" + (err && err.code ? err.code : "error") + ")";
+      }
+    });
+  });
+</script>
+
+</body>
+</html>
