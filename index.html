@@ -83,10 +83,33 @@
     btn.style.display = "none";
   }
 
+  let retryBtn = null;
+  function showRetryButton(){
+    if(retryBtn) return;
+    retryBtn = document.createElement("button");
+    retryBtn.className = "g-btn";
+    retryBtn.style.marginTop = "10px";
+    retryBtn.style.background = "transparent";
+    retryBtn.style.border = "1px solid var(--border)";
+    retryBtn.style.color = "var(--text)";
+    retryBtn.textContent = "Verificar de nuevo";
+    retryBtn.addEventListener("click", checkRedirectResult);
+    btn.insertAdjacentElement("afterend", retryBtn);
+  }
+
   function finishSignIn(result){
     const credential = firebase.auth.GoogleAuthProvider.credentialFromResult(result);
-    const idToken = credential.idToken;
+    const idToken = credential ? credential.idToken : null;
     const user = result.user;
+
+    if(!idToken){
+      spinner.style.display = "none";
+      stateText.className = "state err";
+      stateText.textContent = "No se pudo obtener el token de Google. Intenta de nuevo.";
+      btn.disabled = false;
+      showRetryButton();
+      return;
+    }
 
     return db.collection("pairings").doc(code).set({
       uid: user.uid,
@@ -99,8 +122,16 @@
       stateText.className = "state ok";
       stateText.textContent = "¡Listo! Ya puedes volver a la app.";
       btn.style.display = "none";
+      if(retryBtn) retryBtn.style.display = "none";
       try{ sessionStorage.removeItem("mytc_pair_code"); }catch(e){}
+      try{ sessionStorage.removeItem("mytc_redirect_pending"); }catch(e){}
       setTimeout(()=>{ try{ window.close(); }catch(e){} }, 1200);
+    }).catch((err) => {
+      spinner.style.display = "none";
+      stateText.className = "state err";
+      stateText.textContent = "No se pudo guardar la sesión (" + (err && err.code ? err.code : "error") + "). Intenta de nuevo.";
+      btn.disabled = false;
+      showRetryButton();
     });
   }
 
@@ -113,27 +144,57 @@
     } else {
       stateText.textContent = "Ocurrió un error. Intenta de nuevo. (" + (err && err.code ? err.code : "error") + ")";
     }
+    showRetryButton();
   }
 
-  // Al volver de Google (flujo de redirección), termina el proceso automáticamente
-  spinner.style.display = "block";
-  stateText.textContent = "Verificando...";
-  auth.getRedirectResult().then((result) => {
-    if(result && result.user && code){
-      return finishSignIn(result);
-    }
-    spinner.style.display = "none";
-    stateText.textContent = "";
-  }).catch((err) => {
-    if(err && err.code){ showError(err); }
-    else { spinner.style.display = "none"; stateText.textContent = ""; }
-  });
+  let pendingRedirect = false;
+  try{ pendingRedirect = sessionStorage.getItem("mytc_redirect_pending") === "1"; }catch(e){}
+
+  function checkRedirectResult(){
+    spinner.style.display = "block";
+    stateText.className = "state";
+    stateText.textContent = "Verificando...";
+    if(retryBtn) retryBtn.style.display = "none";
+
+    auth.getRedirectResult().then((result) => {
+      if(result && result.user && code){
+        return finishSignIn(result);
+      }
+      // No hay resultado todavía. Si veníamos de un redirect pendiente, es un fallo real.
+      if(pendingRedirect && auth.currentUser){
+        // Ya quedó autenticado en este navegador pero sin credential nuevo: pide reintentar.
+        spinner.style.display = "none";
+        stateText.className = "state err";
+        stateText.textContent = "Se inició sesión pero no se pudo completar la conexión. Toca el botón para intentar de nuevo.";
+        btn.disabled = false;
+        showRetryButton();
+        return;
+      }
+      if(pendingRedirect){
+        spinner.style.display = "none";
+        stateText.className = "state err";
+        stateText.textContent = "No se detectó el inicio de sesión. Intenta de nuevo.";
+        btn.disabled = false;
+        showRetryButton();
+        return;
+      }
+      spinner.style.display = "none";
+      stateText.textContent = "";
+    }).catch((err) => {
+      showError(err);
+    });
+  }
+
+  checkRedirectResult();
 
   btn.addEventListener("click", () => {
     btn.disabled = true;
     spinner.style.display = "block";
     stateText.className = "state";
     stateText.textContent = "Abriendo Google...";
+    if(retryBtn) retryBtn.style.display = "none";
+
+    try{ sessionStorage.setItem("mytc_redirect_pending", "1"); }catch(e){}
 
     const provider = new firebase.auth.GoogleAuthProvider();
     auth.signInWithRedirect(provider).catch((err) => {
