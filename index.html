@@ -129,7 +129,7 @@
     }).catch((err) => {
       spinner.style.display = "none";
       stateText.className = "state err";
-      stateText.textContent = "No se pudo guardar la sesión (" + (err && err.code ? err.code : "error") + "). Intenta de nuevo.";
+      stateText.textContent = "No se pudo guardar la sesión. Intenta de nuevo.";
       btn.disabled = false;
       showRetryButton();
     });
@@ -142,7 +142,7 @@
     if(err && err.code === "auth/popup-closed-by-user"){
       stateText.textContent = "Cerraste la ventana antes de terminar. Intenta de nuevo.";
     } else {
-      stateText.textContent = "Ocurrió un error. Intenta de nuevo. (" + (err && err.code ? err.code : "error") + ")";
+      stateText.textContent = "Ocurrió un error. Intenta de nuevo.";
     }
     showRetryButton();
   }
